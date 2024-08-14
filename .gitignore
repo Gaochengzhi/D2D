@@ -7,8 +7,17 @@ __pycache__/
 *.so
 
 # Distribution / packaging
+output/
+data/
 .Python
 build/
+
+!output/.gitignore
+!data/.gitignore
+
+
+
+
 develop-eggs/
 dist/
 downloads/
@@ -122,9 +131,7 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-.env
 .venv
-env/
 venv/
 ENV/
 env.bak/
