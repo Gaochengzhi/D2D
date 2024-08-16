@@ -1,7 +1,6 @@
 from __future__ import absolute_import
 from __future__ import print_function
 
-import gym
 import numpy as np
 import os
 import sys
@@ -9,7 +8,8 @@ import math
 import xml.dom.minidom
 import traci
 import sumolib
-from gym import spaces
+from gymnasium import spaces
+import gymnasium as gym
 
 
 def get_zone_index(angle, angle_boundaries):
@@ -167,63 +167,84 @@ class Highway_env(gym.Env):
 
     def get_reward(self, veh_list):
         cost = 0.0
-        infraction = 0.0
-        infraction_check = False
+        time_step_limit = 300 * 30
+        idle_step_limit = 900
+        idle_dis_threshold = 0.3  
+        overtime_check = False
+        idle_check = False
         navigation_check = False
         done = False
 
         raw_obs, _ = self.raw_obs(veh_list)
-        dis_fr = raw_obs[0]
-        dis_f = raw_obs[4]
-        dis_fl = raw_obs[8]
-        dis_rl = raw_obs[12]
-        dis_r = raw_obs[16]
-        dis_rr = raw_obs[20]
-        dis_sides = [dis_fr, dis_fl, dis_rl, dis_rr]
-        v_ego = raw_obs[24]
-        ego_lat_pos = raw_obs[26]
-        ego_lat_v = raw_obs[27]
-        dis_goal_ego = raw_obs[28]
 
-        reward = v_ego / 5.0
+        
+        dis_front_right = raw_obs[0]
+        dis_front = raw_obs[4]
+        dis_front_left = raw_obs[8]
+        dis_rear_left = raw_obs[12]
+        dis_rear = raw_obs[16]
+        dis_rear_right = raw_obs[20]
+        dis_sides = [dis_front_right, dis_front_left, dis_rear_left, dis_rear_right]
 
-        collision_value = self.check_collision(dis_f, dis_r, dis_sides, veh_list)
+        v_ego = raw_obs[24]  # 自车速度
+        ego_lat_pos = raw_obs[26]  # 自车横向位置
+        ego_lat_v = raw_obs[27]  # 自车横向速度
+        dis_goal_ego = raw_obs[28]  
 
-        if collision_value == True:
-            cost = 1.0
+        speed_reward = v_ego / 5.0
+
+        collision_check = self.check_collision()
+
+        if collision_check:
+            cost = 5.0
             done = True
 
-        if (ego_lat_v == 1.0) and (ego_lat_pos < 15):
-            infraction = 1.0
-            infraction_check = True
-            done = True
-            print("+++> infraction:", infraction_check, ego_lat_v, ego_lat_pos)
-
-        if dis_goal_ego < 15.0:
-            navigation = 100.0
-            navigation_check = True
-            done = True
-            print(">>>>>> Stuck")
+        
+        if hasattr(self, 'position_history'):
+            if self._step % idle_step_limit ==0:
+                self.position_history = abs( dis_goal_ego -self.position_history)
         else:
-            navigation = -np.log(1.0 + dis_goal_ego / self.max_dis_navigation) - 1.0
+           self.position_history = dis_goal_ego
+
+        
+        
+        if self.position_history < idle_dis_threshold:
+                idle_check = True
+                done = True
+                print(">>> Idle too long:", self._step)
+        
+        if dis_goal_ego < 15.0:
+            navigation_check = True
+            navigation_precent = 100
+            done = True
+            print(">>>>>> Finish!")
+        else:
+            navigation_precent = -np.log(1.0 + dis_goal_ego / self.max_dis_navigation) - 1.0
+
+
+        if self._step > time_step_limit:
+            overtime_check = True
+            done = True
+            print("+++> over time:", navigation_precent)
 
         return (
-            reward - cost - infraction + navigation,
-            collision_value,
-            cost,
-            infraction_check,
-            infraction,
+            speed_reward - cost + navigation_precent,
+            collision_check,
+            speed_reward,
+            self._step,
+            navigation_precent,
+            overtime_check,
             navigation_check,
-            done,
+            idle_check,  
         )
 
-    def check_collision(self, dis_f, dis_r, dis_sides, vhe_list):
-        collision_value = False
+    def check_collision(self):
+        collision_check = False
         vlist = traci.simulation.getCollidingVehiclesIDList()
         if self.ego_id in vlist:
-            collision_value = True
+            collision_check = True
             print("===>Checker-0: Collision!")
-        return collision_value
+        return collision_check
 
     def step(self, action_a):
         acc, lane_change = action_a[0].item(), action_a[1].item()
@@ -238,37 +259,29 @@ class Highway_env(gym.Env):
         veh_list = traci.vehicle.getIDList()
 
         (
-            reward_cost,
-            collision_value,
-            cost,
-            infraction_check,
-            infraction,
+            reward,
+            collision_check,
+            speed_reward,
+            time_step,
+            navigation_precent,
+            overtime_chceck,
             navigation_check,
-            done,
+            idle_check,
         ) = self.get_reward(veh_list)
         next_state, pos = self.norm_obs(veh_list)
 
-        # return (
-        #     reward_cost,
-        #     next_state,
-        #     collision_value,
-        #     cost,
-        #     infraction_check,
-        #     infraction,
-        #     navigation_check,
-        #     done,
-        #     info,
-        # )
-        done = collision_value or infraction_check or navigation_check
-        pos = {
-            "collision": collision_value,
-            "cost": cost,
-            "infraction": infraction_check,
-            "navigation": navigation_check,
+        terminated =  collision_check or navigation_check 
+        truncated = overtime_chceck or idle_check
+        info = {
+            "collision": collision_check,
+            "speed_reward": speed_reward,
+            "time_step": time_step,
+            "navigation": navigation_precent,
             "position": pos,
+            "reward": reward
         }
 
-        return next_state, reward_cost, done, False, pos
+        return next_state, reward, terminated, truncated, info
 
     def reset(self, seed=None, options=None):
         dom = xml.dom.minidom.parse(self.config_path)
@@ -295,7 +308,7 @@ class Highway_env(gym.Env):
             "id": "Auto",
             "depart": "20",
             "departLane": "best",
-            "departSpeed": "5.00",
+            "departSpeed": "2.00",
             "color": "red",
             "from": self.start_edge,
             "to": self.end_edge,
