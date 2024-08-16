@@ -14,6 +14,8 @@ build/
 
 !output/.gitignore
 !data/.gitignore
+!log/.gitignore
+!record/.gitignore
 
 
 

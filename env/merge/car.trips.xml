@@ -1,6 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
-
-<!-- generated on 2024-08-12 22:42:51.889022 by randomTrips.py UNKNOWN
+<?xml version="1.0" ?><!-- generated on 2024-08-12 22:42:51.889022 by randomTrips.py UNKNOWN
 <configuration>
     <net-file value="highway.net.xml"/>
     <output-trip-file value="car.trips.xml"/>
@@ -17,10 +15,9 @@
     <period value="0.27"/>
     <random-depart value="True"/>
 </configuration>
--->
-
-<!-- generated on 2024-08-12 22:42:51 by Eclipse SUMO duarouter Version 1.20.0
-<configuration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/duarouterConfiguration.xsd">
+--><!-- generated on 2024-08-12 22:42:51 by Eclipse SUMO duarouter Version 1.20.0
+<configuration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/duarouterConfiguration.xsd">
 
     <input>
         <net-file value="highway.net.xml"/>
@@ -45,9 +42,9 @@
     </report>
 
 </configuration>
--->
+--><routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
 
-<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
+
     <trip id="car0" type="car0" depart="0.24" departLane="best" departSpeed="5.00" from="E1" to="E3.123"/>
     <trip id="car1" type="car1" depart="0.73" departLane="best" departSpeed="5.00" from="E1" to="E3.123"/>
     <trip id="car2" type="car2" depart="0.98" departLane="best" departSpeed="5.00" from="E1" to="E3.123"/>
