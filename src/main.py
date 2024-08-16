@@ -1,7 +1,8 @@
 import gymnasium as gym
-
+from run_env import Highway_env
 from stable_baselines3 import PPO
 
-env = gym.make("CartPole-v1", render_mode="human")
+env = Highway_env(gui=True)
 
-model = PPO("MlpPolicy", "CartPole-v1").learn(10_000)
+model = PPO("MlpPolicy", env, verbose=1)
+model.learn(total_timesteps=10_00_000)
