@@ -173,14 +173,9 @@ class Highway_env(gym.Env):
         collision_value = self.check_collision(dis_f, dis_r, dis_sides, veh_list)
 
         if collision_value == True:
-            cost = 1.0
+            cost = 10.0
             done = True
 
-        # if (ego_lat_v == 1.0) and (ego_lat_pos < 15):
-        #     # infraction = 1.0
-        #     # infraction_check = True
-        #     done = True
-        #     print("+++> infraction:", infraction_check, ego_lat_v, ego_lat_pos)
 
         if self._step > 600 * 30:
             navigation = 100.0
@@ -205,7 +200,7 @@ class Highway_env(gym.Env):
         vlist = traci.simulation.getCollidingVehiclesIDList()
         if self.ego_id in vlist:
             collision_value = True
-            print("===>Checker-0: Collision!")
+            print("===>Checker-0: Collision!\n")
         return collision_value
 
     def step(self, action_a):

@@ -1,5 +1,7 @@
 import traceback
-import logging
+import os
+import shutil
+import math
 
 
 class Singleton(type):
@@ -12,5 +14,19 @@ class Singleton(type):
 
 
 def handle_exception(e):
-    logging.error(e)
-    logging.error(traceback.format_exc())
+    print(e)
+    print(traceback.format_exc())
+
+
+def copy_files(files, source_dir, destination_dir):
+    for file in files:
+        source_file = os.path.join(source_dir, file)
+        destination_file = os.path.join(destination_dir, file)
+        if os.path.exists(source_file):
+            shutil.copy2(source_file, destination_file)
+        else:
+            print(f"warning {source_file} not exist")
+
+
+def normal_val(x, level=10):
+    return math.tanh(-10 * x) + 1

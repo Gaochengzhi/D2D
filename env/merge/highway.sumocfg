@@ -3,7 +3,7 @@
 
     <input>
         <net-file value="highway.net.xml"/>
-        <route-files value="vTypeDistributions.add.xml,car.trips.xml,bus.trips.xml,auto.trips.xml"/>
+        <route-files value="vTypeDistributions.add.xml,auto.trips.xml,car.trips.xml,bus.trips.xml"/>
     </input>
 
     <time>
@@ -21,14 +21,13 @@
 
     <report>
         <verbose value="false"/>
-        <no-warnings value="true"/>
-        <!-- <no-step-log value="true"/>     -->
+        <no-warnings value="true"/> 
+        <no-step-log value="true"/>    
     </report>
 
     <random_number>
         <random value="false"/>
-        <seed value=""/>
-
+        <seed value="22"/>
     </random_number>
 
     <gui_only>

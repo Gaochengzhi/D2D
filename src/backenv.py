@@ -15,7 +15,6 @@ import subprocess
 import re
 from gaodb import gaodb
 import shutil
-import wandb
 
 
 def get_zone_index(angle, angle_boundaries):
@@ -46,10 +45,10 @@ class Highway_env(gym.Env):
         end_junc="J3",
         end_edge="E3.123",
         gui=False,
-        time_limit=400 * 30,
-        param=[1, 2, 1],
+        time_limit=300 * 30,
+        task_name="test",
     ):
-        super().__init__()
+        super(Highway_env, self).__init__()
         self.ego_id = "Auto"
         self.detect_range = 100.0
         self.end_junc = end_junc
@@ -87,12 +86,10 @@ class Highway_env(gym.Env):
             low=-1, high=1, shape=(29,), dtype=np.float32
         )
         self.start_sumo(gui=gui)
-        # self.gaodb = gaodb.get()
-        self.time_step = 0
-        self.task_level = 8
+        self.gaodb = gaodb.get()
+        self._step = 0
+        self.task_level = 10
         self.consecutive_finish = 0
-        self.param = param
-        self.a = wandb.init(project="okb", name=f"ppotask{param}")
 
     def _init_work_space(self, env_name):
         """Create tmp work space for sumo"""
@@ -218,7 +215,7 @@ class Highway_env(gym.Env):
         time_step_limit = self.time_limit
         overtime_check = False
         navigation_check = False
-        idle_step_limit = 10 * 30
+        idle_step_limit = 600
         idle_dis_threshold = 10
         idle_check = False
 
@@ -246,53 +243,45 @@ class Highway_env(gym.Env):
 
         collision_check = self.check_collision()
 
-        # min_side_dist = min(dis_sides)
-        cost = 0
+        min_side_dist = min(dis_sides)
+        cost = (
+            -normal_val(abs(min_side_dist / self.detect_range))
+            + abs(ego_lat_v / self.max_lat_v) / 100
+            + abs(ego_lat_pos / 5) / 100
+        )
 
         if collision_check:
-            # cost = math.sqrt(ego_lat_v**2 + v_ego**2) + 1
-            cost += 10
+            cost = math.sqrt(ego_lat_v**2 + v_ego**2)
 
-        if self.time_step % idle_step_limit == 0:
+        if self._step % idle_step_limit == 0:
             if (
                 abs(self.last_travel_dis - abs(dis_goal_ego - self.max_dis_navigation))
                 < idle_dis_threshold
             ):
                 idle_check = True
                 cost += 1
-                print(">>>>>>>>>>>>>>>>>>>>>>>>> Idle too long:", self.time_step, "\n")
+                print(">>>>>>>>>>>>>>>>>>>>>>>>> Idle too long:", self._step, "\n")
             self.last_travel_dis = abs(dis_goal_ego - self.max_dis_navigation)
 
-        # print(dis_goal_ego, self.last_travel_dis)
         if dis_goal_ego < 15.0:
             navigation_check = True
-            self.navigation_precent = 1
-            cost -= 10
+            navigation_precent = 1
             self.consecutive_finish += 1
             print("=========================== Finish!" + "\n")
         else:
-            self.navigation_precent = 1 - dis_goal_ego / self.max_dis_navigation
+            navigation_precent = 1 - dis_goal_ego / self.max_dis_navigation
 
-        if self.time_step > time_step_limit:
+        if self._step > time_step_limit:
             overtime_check = True
-            print("+++++++++++++++++++++> over time:", self.navigation_precent, "\n")
+            print("+++++++++++++++++++++> over time:", navigation_precent, "\n")
 
-        speed_reward = (
-            v_ego / self.maxSpeed
-            - (abs(ego_lat_v / self.max_lat_v) + abs(ego_lat_pos / 5)) / 100
-            - 0.01
-        )
-        self.all_speed += v_ego
-        reward = (
-            self.param[0] * speed_reward
-            - self.param[1] * cost
-            + self.param[2] * self.navigation_precent
-        )
-        self.total_reward += reward
+        speed_reward = v_ego / self.maxSpeed
+        self.mean_speed += speed_reward
+        self.total_reward += speed_reward - cost + navigation_precent
         return (
-            reward,
+            speed_reward - cost + navigation_precent,
             collision_check,
-            self.navigation_precent,
+            navigation_precent,
             overtime_check,
             navigation_check,
             idle_check,
@@ -311,24 +300,25 @@ class Highway_env(gym.Env):
         if os.path.exists(f"../tmp/{self.work_id}"):
             shutil.rmtree(f"../tmp/{self.work_id}")
 
-    def step(self, action):
+    def step(self, action_a):
         try:
-            # for _ in range(3):
-            traci.simulationStep()
-            acc, lane_change = action[0].item(), action[1].item()
+            acc, lane_change = action_a[0].item(), action_a[1].item()
             control_acc = self.max_acc * acc
+
             traci.vehicle.changeSublane(self.ego_id, lane_change)
+
             traci.vehicle.setAcceleration(self.ego_id, control_acc, duration=0.03)
-            self.time_step += 1
-            if self.time_step % (100 * 30) == 0:
-                print("Step time:", int(self.time_step) / 30)
+            traci.simulationStep()
+            self._step += 1
+            if self._step % (100 * 30) == 0:
+                print("Step time:", int(self._step) / 30)
 
             veh_list = traci.vehicle.getIDList()
 
             (
                 reward,
                 collision_check,
-                self.navigation_precent,
+                navigation_precent,
                 overtime_chceck,
                 navigation_check,
                 idle_check,
@@ -336,51 +326,50 @@ class Highway_env(gym.Env):
             next_state, pos = self.norm_obs(veh_list)
 
             terminated = navigation_check or collision_check
-            truncated = overtime_chceck
+            truncated = overtime_chceck or idle_check
+
             info = {
                 "collision_check": collision_check,
-                "mean_speed": self.all_speed / (self.time_step + 1),
+                "mean_speed": self.mean_speed / self._step,
                 "idle_check": idle_check,
-                "time_step": self.time_step,
-                "navigation": self.navigation_precent,
+                "time_step": self._step,
+                "navigation": navigation_precent,
                 "position": pos,
                 "task_level": self.task_level,
                 "reward": reward,
-                "total_reward": self.total_reward,
+                "total_reward": self.total_reward / self._step,
             }
             if terminated or truncated:
-                # self.gaodb.log(info)
-                wandb.log(info)
-                self.a.log_code()
-                pass
-            if collision_check or overtime_chceck:
                 self.consecutive_finish = 0
+                self.gaodb.log(info)
 
             return next_state, reward, terminated, truncated, info
         except Exception as e:
             handle_exception(e)
 
     def reset(self, seed=None, options=None):
-        self._initialize_reset_vals()
-        self._create_traffic_config()
-        self._load_simulation()
-        self._wait_for_auto_car()
-        VehicleIds = traci.vehicle.getIDList()
-        initial_state, info = self.norm_obs(VehicleIds)
-        return initial_state, info
+        try:
+            self._initialize_reset_vals()
+            self._create_traffic_config()
+            self._update_config()
+            self._load_simulation()
+            self._wait_for_auto_car()
+            VehicleIds = traci.vehicle.getIDList()
+            initial_state, info = self.norm_obs(VehicleIds)
+            return initial_state, info
+        except Exception as e:
+            handle_exception(e)
 
     def _initialize_reset_vals(self):
         """Initialize variables and parse config."""
-        self.time_step = 0
+        self._step = 0
         self.last_travel_dis = 20
         self.dom = xml.dom.minidom.parse(self.config_path)
         self.root = self.dom.documentElement
-        self.all_speed = 0
+        self.mean_speed = 0
         self.total_reward = 0
-        self.navigation_precent = 0
 
     def _create_traffic_config(self):
-        # return
         """Handles trip XML file creation or updating."""
         config_dir = os.path.dirname(self.config_path)
         trip_path = os.path.join(config_dir, "auto.trips.xml")
@@ -482,10 +471,23 @@ class Highway_env(gym.Env):
         with open(trip_path, "w") as trip_file:
             trip_dom.writexml(trip_file)
 
+    def _update_config(self):
+        """Update and save the configuration with the new seed value."""
+        seed = np.random.randint(0, 10000)
+        random_seed_element = self.root.getElementsByTagName("seed")[0]
+        super().reset(seed=seed)
+        try:
+            if self.reset_times % 2 == 0:
+                random_seed_element.setAttribute("value", str(seed))
+
+            with open(self.config_path, "w") as file:
+                self.dom.writexml(file)
+        except Exception as e:
+            handle_exception(e)
+
     def _load_simulation(self):
         """Load the simulation with the new configuration."""
-        seed = np.random.randint(0, 10000)
-        traci.load(["-c", self.config_path, "--seed", str(seed)])
+        traci.load(["-c", self.config_path])
         print(f"============= Resetting the env {self.reset_times}============")
         self.reset_times += 1
 
